@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Installa Tetris Weather Clock</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; --bg:#0e1014; --card:#171a21; --line:#2a2f3a; --fg:#e9ebf1; --mut:#8f97ab; --acc:#4da3ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px 48px; background:var(--bg); color:var(--fg);
+         font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  main { max-width:620px; margin:0 auto; }
+  h1 { font-size:26px; margin:8px 0 4px; }
+  .sub { color:var(--mut); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  h2 { font-size:17px; margin:0 0 8px; }
+  ol, ul { margin:8px 0 0; padding-left:20px; }
+  li { margin:4px 0; }
+  .blocks { display:flex; gap:4px; margin:0 0 14px; }
+  .blocks i { width:14px; height:14px; border-radius:3px; display:block; }
+  esp-web-install-button button {
+    background:var(--acc); color:#04121f; border:0; border-radius:10px; padding:13px 22px;
+    font-size:16px; font-weight:700; cursor:pointer;
+  }
+  .warn { color:#ffb454; }
+  code { background:#0e1014; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:14px; }
+  .mut { color:var(--mut); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="blocks"><i style="background:#ff5d5d"></i><i style="background:#ffb454"></i><i style="background:#ffe14d"></i><i style="background:#6fdc8c"></i><i style="background:#4da3ff"></i></div>
+  <h1>Tetris Weather Clock</h1>
+  <p class="sub">Orologio a blocchi Tetris con meteo animato per ESP32 e pannello HUB75 64&times;32.</p>
+
+  <div class="card">
+    <h2>1. Installa il firmware</h2>
+    <p class="mut">Collega l'ESP32 al computer con un cavo USB <b>dati</b>, poi premi il pulsante.</p>
+    <esp-web-install-button manifest="manifest.json">
+      <span slot="unsupported" class="warn">Questo browser non supporta l'installazione via USB. Usa Chrome o Edge da computer.</span>
+      <span slot="not-allowed" class="warn">Apri questa pagina tramite HTTPS per installare.</span>
+    </esp-web-install-button>
+    <ul>
+      <li>Scegli la porta seriale dell'ESP32 (di solito &laquo;CP210x&raquo; o &laquo;CH340&raquo;).</li>
+      <li>Se la connessione fallisce, tieni premuto il tasto <code>BOOT</code> mentre parte il collegamento.</li>
+      <li>L'installazione cancella la memoria della scheda: le impostazioni precedenti andranno perse.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>2. Collega il WiFi</h2>
+    <ol>
+      <li>Sul display compare <b>SETUP WIFI</b>: dal telefono collegati alla rete <code>TetrisClock</code>.</li>
+      <li>Si apre da sola la pagina di configurazione (altrimenti vai su <code>192.168.4.1</code>).</li>
+      <li>Scegli la tua rete WiFi, inserisci la password e salva.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>3. Imposta la citt&agrave;</h2>
+    <p>Quando il display ha scorso l'indirizzo IP, apri <code>http://tetrisclock.local</code> (o l'IP mostrato) dal telefono o dal PC sulla stessa rete.
+    Scrivi la citt&agrave;, scegli &deg;C/&deg;F, formato 12/24 ore e luminosit&agrave;, poi premi <b>Salva</b>.</p>
+    <p class="mut">Il fuso orario e l'ora legale seguono la citt&agrave; scelta. L'ora si sincronizza da internet (NTP).</p>
+  </div>
+
+  <p class="mut">Meteo: <a style="color:var(--acc)" href="https://open-meteo.com/">Open-Meteo.com</a> &middot; Animazione Tetris: libreria TetrisAnimation di Tobias Blum / Brian Lough.</p>
+</main>
+</body>
+</html>

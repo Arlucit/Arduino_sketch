@@ -1,0 +1,13 @@
+{
+  "name": "Tetris Weather Clock",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "firmware/tetris-clock.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
