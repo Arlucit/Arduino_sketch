@@ -59,6 +59,7 @@
 
 #define MAXC 6  // citta' massime
 #define MAXM 6  // messaggi massimi
+#define LANG_N 5  // lingue: it, en, es, fr, de
 
 // Posizione x (pixel) delle 4 cifre dell'ora: HH:MM (cifre larghe 12, due punti a x=30..33)
 static const int SLOT_X[4] = {2, 16, 36, 50};
@@ -79,6 +80,7 @@ struct Settings {
   uint16_t nightStart = 22 * 60;  // inizio notte, minuti dalla mezzanotte
   uint16_t nightEnd = 7 * 60;     // fine notte
   uint8_t nightBr = 15;           // luminosita' di notte
+  uint8_t lang = 0;               // 0 it, 1 en, 2 es, 3 fr, 4 de
 };
 
 struct CityCfg {
@@ -149,6 +151,9 @@ MsgCfg msgs[MAXM];
 int nMsg = 0;
 Weather wxs[MAXC];
 
+static const char *LANG_CODE[LANG_N] = {"it", "en", "es", "fr", "de"};
+bool langKnown = false;  // false al primo avvio: la lingua si sceglie nel portale WiFi
+volatile bool geoClear = false;
 volatile bool wxRefresh = true;
 volatile bool replayFlag = false;
 bool forceIntro = true;
@@ -271,6 +276,8 @@ void loadSettings() {
   cfg.nightStart = constrain(prefs.getUShort("nst", 22 * 60), 0, 1439);
   cfg.nightEnd = constrain(prefs.getUShort("nen", 7 * 60), 0, 1439);
   cfg.nightBr = constrain(prefs.getUChar("nbr", 15), 1, 255);
+  langKnown = prefs.isKey("lang");
+  cfg.lang = constrain(prefs.getUChar("lang", 0), 0, LANG_N - 1);
 
   nCity = 0;
   String cj = prefs.getString("cities", "");
@@ -326,6 +333,7 @@ void saveSettings() {
   prefs.putUShort("nst", cfg.nightStart);
   prefs.putUShort("nen", cfg.nightEnd);
   prefs.putUChar("nbr", cfg.nightBr);
+  prefs.putUChar("lang", cfg.lang);
 }
 
 // ===================== Meteo (task su core 0) =====================
@@ -377,20 +385,20 @@ void setWxError(int i, const String &city, const String &cc, const char *msg, bo
 
 bool fetchCity(int i, const String &city, const String &cc) {
   if (city.length() == 0) return false;
-  String key = city + "|" + cc;
+  String key = city + "|" + cc + "|" + LANG_CODE[cfg.lang];
   GeoEnt *ge = geoFind(key);
   if (!ge) {
     String url = "https://geocoding-api.open-meteo.com/v1/search?name=" + urlEncode(city) +
-                 "&count=1&language=it&format=json";
+                 "&count=1&language=" + String(LANG_CODE[cfg.lang]) + "&format=json";
     if (cc.length() == 2) url += "&countryCode=" + cc;
     String body;
     if (!httpsGet(url, body)) {
-      setWxError(i, city, cc, "Rete non raggiungibile", false);
+      setWxError(i, city, cc, "e_net", false);
       return false;
     }
     JsonDocument doc;
     if (deserializeJson(doc, body)) {
-      setWxError(i, city, cc, "Risposta non valida", false);
+      setWxError(i, city, cc, "e_resp", false);
       return false;
     }
     ge = geoAdd();
@@ -406,7 +414,7 @@ bool fetchCity(int i, const String &city, const String &cc) {
     }
   }
   if (ge->bad) {
-    setWxError(i, city, cc, "Citta non trovata", true);
+    setWxError(i, city, cc, "e_geo", true);
     return false;
   }
 
@@ -417,12 +425,12 @@ bool fetchCity(int i, const String &city, const String &cc) {
            ge->lat, ge->lon);
   String body;
   if (!httpsGet(String(url), body)) {
-    setWxError(i, city, cc, "Meteo non raggiungibile", false);
+    setWxError(i, city, cc, "e_wx", false);
     return false;
   }
   JsonDocument doc;
   if (deserializeJson(doc, body) || !doc["current"].is<JsonObject>()) {
-    setWxError(i, city, cc, "Risposta non valida", false);
+    setWxError(i, city, cc, "e_resp", false);
     return false;
   }
   JsonObject c = doc["current"];
@@ -450,6 +458,11 @@ void weatherTask(void *) {
   for (;;) {
     if (WiFi.status() == WL_CONNECTED && (wxRefresh || (int32_t)(millis() - nextDue) >= 0)) {
       wxRefresh = false;
+      if (geoClear) {
+        geoClear = false;
+        geoCount = 0;
+        geoNext = 0;
+      }
       String cn[MAXC], cc[MAXC];
       int n;
       xSemaphoreTake(mtx, portMAX_DELAY);
@@ -963,219 +976,332 @@ button.sm{width:auto;margin:0;padding:7px 11px;font-size:14px}
 <h1>&#9632; Tetris Clock</h1>
 
 <div class="card">
-  <h2>Citt&agrave;</h2>
-  <div class="mut" style="margin-bottom:6px">La prima citt&agrave; mostra ora grande e meteo in due pagine; dalla seconda in poi ogni citt&agrave; ha una sola pagina con meteo e ora locale.</div>
-  <div id="cl"><div class="mut">Nessuna citt&agrave;.</div></div>
+  <h2 data-i="t_cities"></h2>
+  <div class="mut" style="margin-bottom:6px" data-i="cities_help"></div>
+  <div id="cl"></div>
   <div class="row" style="margin-top:6px">
-    <div><label for="ncity">Nuova citt&agrave;</label><input id="ncity" placeholder="es. Bologna" autocomplete="off" maxlength="40"></div>
-    <div><label for="ncc">Paese (facoltativo)</label><input id="ncc" maxlength="2" placeholder="IT" style="text-transform:uppercase"></div>
+    <div><label for="ncity" data-i="new_city"></label><input id="ncity" data-ph="ph_city" autocomplete="off" maxlength="40"></div>
+    <div><label for="ncc" data-i="country"></label><input id="ncc" maxlength="2" placeholder="IT" style="text-transform:uppercase"></div>
   </div>
-  <button type="button" id="cadd">Aggiungi citt&agrave;</button>
+  <button type="button" id="cadd" data-i="add_city"></button>
   <div class="msgs" id="cmsg"></div>
 </div>
 
 <div class="card">
-  <h2>Messaggi scorrevoli</h2>
-  <div class="mut" style="margin-bottom:6px">Ogni messaggio &egrave; una pagina che scorre da destra a sinistra. Vengono dopo le citt&agrave;.</div>
-  <div id="ml"><div class="mut">Nessun messaggio.</div></div>
-  <label for="mt">Testo</label>
-  <input id="mt" maxlength="160" placeholder="es. Buon compleanno!" autocomplete="off">
+  <h2 data-i="t_msgs"></h2>
+  <div class="mut" style="margin-bottom:6px" data-i="msgs_help"></div>
+  <div id="ml"></div>
+  <label for="mt" data-i="text"></label>
+  <input id="mt" maxlength="160" data-ph="ph_msg" autocomplete="off">
   <div class="row">
-    <div><label for="mc">Colore</label><input id="mc" type="color" value="#ffd23c"></div>
-    <div><label for="ms">Dimensione</label><select id="ms"><option value="2">Grande</option><option value="1">Piccolo</option></select></div>
+    <div><label for="mc" data-i="color"></label><input id="mc" type="color" value="#ffd23c"></div>
+    <div><label for="ms" data-i="size"></label><select id="ms"><option value="2" data-i="big"></option><option value="1" data-i="small"></option></select></div>
   </div>
-  <button type="button" id="madd">Aggiungi messaggio</button>
+  <button type="button" id="madd" data-i="add_msg"></button>
   <div class="msgs" id="mmsg"></div>
 </div>
 
 <form class="card" id="f">
-  <h2>Impostazioni</h2>
+  <h2 data-i="t_set"></h2>
   <div class="mut" id="net">--</div>
-  <div class="mut">Ora sul display: <span id="time">--:--:--</span></div>
+  <div class="mut"><span data-i="disp_time"></span>: <span id="time">--:--:--</span></div>
+  <label for="lang">Lingua / Language / Idioma / Langue / Sprache</label>
+  <select id="lang"><option value="0">Italiano</option><option value="1">English</option><option value="2">Español</option><option value="3">Français</option><option value="4">Deutsch</option></select>
   <div class="row">
-    <div><label for="units">Unit&agrave;</label><select id="units"><option value="C">&deg;C</option><option value="F">&deg;F</option></select></div>
-    <div><label for="fmt">Formato ora</label><select id="fmt"><option value="24">24 ore</option><option value="12">12 ore (puntino = PM)</option></select></div>
+    <div><label for="units" data-i="units"></label><select id="units"><option value="C">&deg;C</option><option value="F">&deg;F</option></select></div>
+    <div><label for="fmt" data-i="fmt"></label><select id="fmt"><option value="24" data-i="h24"></option><option value="12" data-i="h12"></option></select></div>
   </div>
-  <label for="br">Luminosit&agrave; di giorno</label>
+  <label for="br" data-i="br_day"></label>
   <input id="br" type="range" min="5" max="255">
-  <div class="chk"><input id="auto" type="checkbox"><label for="auto" style="margin:0">Luminosit&agrave; automatica (sensore LDR)</label></div>
-  <div class="chk"><input id="non" type="checkbox"><label for="non" style="margin:0">Fascia notturna a orari</label></div>
+  <div class="chk"><input id="auto" type="checkbox"><label for="auto" style="margin:0" data-i="auto"></label></div>
+  <div class="chk"><input id="non" type="checkbox"><label for="non" style="margin:0" data-i="night_on"></label></div>
   <div id="nbox">
     <div class="row">
-      <div><label for="nst">Inizio notte</label><input id="nst" type="time" value="22:00"></div>
-      <div><label for="nen">Fine notte</label><input id="nen" type="time" value="07:00"></div>
+      <div><label for="nst" data-i="n_start"></label><input id="nst" type="time" value="22:00"></div>
+      <div><label for="nen" data-i="n_end"></label><input id="nen" type="time" value="07:00"></div>
     </div>
-    <label for="nbr">Luminosit&agrave; di notte</label>
+    <label for="nbr" data-i="br_night"></label>
     <input id="nbr" type="range" min="1" max="255">
   </div>
-  <label for="spd">Velocit&agrave; caduta blocchi: <b id="spdv">6</b> / 10</label>
+  <label for="spd"><span data-i="spd"></span>: <b id="spdv">6</b> / 10</label>
   <input id="spd" type="range" min="1" max="10" step="1">
-  <label for="trspd">Velocit&agrave; scorrimento tra le pagine: <b id="trv">5</b> / 10</label>
+  <label for="trspd"><span data-i="trspd"></span>: <b id="trv">5</b> / 10</label>
   <input id="trspd" type="range" min="1" max="10" step="1">
-  <label for="mspd">Velocit&agrave; messaggi scorrevoli: <b id="mspv">5</b> / 10</label>
+  <label for="mspd"><span data-i="mspd"></span>: <b id="mspv">5</b> / 10</label>
   <input id="mspd" type="range" min="1" max="10" step="1">
   <div class="row3">
-    <div><label for="tsec">Sec. ora</label><input id="tsec" type="number" min="5" max="300"></div>
-    <div><label for="wsec">Sec. meteo</label><input id="wsec" type="number" min="3" max="120"></div>
-    <div><label for="csec">Sec. altre citt&agrave;</label><input id="csec" type="number" min="3" max="120"></div>
+    <div><label for="tsec" data-i="s_time"></label><input id="tsec" type="number" min="5" max="300"></div>
+    <div><label for="wsec" data-i="s_wx"></label><input id="wsec" type="number" min="3" max="120"></div>
+    <div><label for="csec" data-i="s_city"></label><input id="csec" type="number" min="3" max="120"></div>
   </div>
-  <button type="submit">Salva</button>
-  <button type="button" class="sec" id="rp">Salva e rigioca l'animazione</button>
-  <button type="button" class="sec" id="rf">Aggiorna meteo adesso</button>
-  <button type="button" class="sec" id="wr">Reimposta WiFi (riapre il portale)</button>
+  <button type="submit" data-i="save"></button>
+  <button type="button" class="sec" id="rp" data-i="save_replay"></button>
+  <button type="button" class="sec" id="rf" data-i="refresh"></button>
+  <button type="button" class="sec" id="wr" data-i="wifi_reset"></button>
   <div class="msgs" id="msg"></div>
 </form>
 
 <div class="card" id="wf">
-  <h2>Rete WiFi</h2>
+  <h2 data-i="t_wifi"></h2>
   <div class="mut" id="wcur" style="margin-bottom:8px">--</div>
   <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
-    <select id="wl"><option value="">Premi &laquo;Cerca reti&raquo;</option></select>
-    <button type="button" class="sec" id="ws" style="margin-top:0;width:auto;padding:10px 14px">Cerca reti</button>
+    <select id="wl"></select>
+    <button type="button" class="sec" id="ws" style="margin-top:0;width:auto;padding:10px 14px" data-i="scan"></button>
   </div>
-  <input id="wo" placeholder="Nome rete (SSID)" maxlength="32" style="display:none;margin-top:8px" autocomplete="off">
-  <input id="wp" type="password" placeholder="Password (vuota se la rete &egrave; aperta)" maxlength="63" style="margin-top:8px" autocomplete="off">
-  <button type="button" id="wc">Collega a questa rete</button>
+  <input id="wo" data-ph="ph_ssid" maxlength="32" style="display:none;margin-top:8px" autocomplete="off">
+  <input id="wp" type="password" data-ph="ph_pass" maxlength="63" style="margin-top:8px" autocomplete="off">
+  <button type="button" id="wc" data-i="connect"></button>
   <div id="wmsg" class="mut" style="margin-top:10px;min-height:20px"></div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
-const COND={0:"Sereno",1:"Prevalentemente sereno",2:"Parzialmente nuvoloso",3:"Coperto",45:"Nebbia",48:"Nebbia con brina",51:"Pioggerella",53:"Pioggerella",55:"Pioggerella intensa",56:"Pioggerella gelata",57:"Pioggerella gelata",61:"Pioggia debole",63:"Pioggia",65:"Pioggia forte",66:"Pioggia gelata",67:"Pioggia gelata",71:"Neve debole",73:"Neve",75:"Neve forte",77:"Granelli di neve",80:"Rovesci",81:"Rovesci",82:"Rovesci violenti",85:"Rovesci di neve",86:"Rovesci di neve",95:"Temporale",96:"Temporale con grandine",99:"Temporale con grandine"};
+const D={
+t_cities:["Città","Cities","Ciudades","Villes","Städte"],
+cities_help:["La prima città mostra ora grande e meteo in due pagine; dalla seconda in poi ogni città ha una sola pagina con meteo e ora locale.","The first city shows the big clock and the weather on two pages; from the second on, each city has a single page with weather and local time.","La primera ciudad muestra la hora grande y el tiempo en dos páginas; desde la segunda, cada ciudad tiene una sola página con tiempo y hora local.","La première ville affiche la grande heure et la météo sur deux pages ; à partir de la deuxième, chaque ville a une seule page avec météo et heure locale.","Die erste Stadt zeigt die große Uhr und das Wetter auf zwei Seiten; ab der zweiten hat jede Stadt eine Seite mit Wetter und Ortszeit."],
+no_city:["Nessuna città: aggiungine una qui sotto.","No cities: add one below.","Ninguna ciudad: añade una abajo.","Aucune ville : ajoutez-en une ci-dessous.","Keine Stadt: unten eine hinzufügen."],
+new_city:["Nuova città","New city","Nueva ciudad","Nouvelle ville","Neue Stadt"],
+ph_city:["es. Bologna","e.g. Boston","p. ej. Sevilla","ex. Lyon","z. B. Köln"],
+country:["Paese (facoltativo)","Country (optional)","País (opcional)","Pays (facultatif)","Land (optional)"],
+add_city:["Aggiungi città","Add city","Añadir ciudad","Ajouter la ville","Stadt hinzufügen"],
+main_tag:["principale","main","principal","principale","Haupt"],
+make_main:["Principale","Make main","Principal","Principale","Hauptstadt"],
+remove:["Rimuovi","Remove","Quitar","Supprimer","Entfernen"],
+confirm_rm:["Rimuovere {0}?","Remove {0}?","¿Quitar {0}?","Supprimer {0} ?","{0} entfernen?"],
+waiting:["In attesa dei dati meteo…","Waiting for weather data…","Esperando datos del tiempo…","En attente des données météo…","Warte auf Wetterdaten…"],
+min_ago:["{0} min fa","{0} min ago","hace {0} min","il y a {0} min","vor {0} Min."],
+city_added:["Città aggiunta. Cerco il meteo…","City added. Fetching weather…","Ciudad añadida. Buscando el tiempo…","Ville ajoutée. Recherche de la météo…","Stadt hinzugefügt. Hole Wetter…"],
+enter_city:["Scrivi il nome della città","Enter the city name","Escribe el nombre de la ciudad","Saisissez le nom de la ville","Stadtnamen eingeben"],
+t_msgs:["Messaggi scorrevoli","Scrolling messages","Mensajes desplazables","Messages défilants","Laufende Nachrichten"],
+msgs_help:["Ogni messaggio è una pagina che scorre da destra a sinistra. Vengono dopo le città.","Each message is a page that scrolls from right to left. They come after the cities.","Cada mensaje es una página que se desplaza de derecha a izquierda. Van después de las ciudades.","Chaque message est une page qui défile de droite à gauche. Ils viennent après les villes.","Jede Nachricht ist eine Seite, die von rechts nach links läuft. Sie folgen auf die Städte."],
+no_msg:["Nessun messaggio.","No messages.","Ningún mensaje.","Aucun message.","Keine Nachrichten."],
+text:["Testo","Text","Texto","Texte","Text"],
+ph_msg:["es. Buon compleanno!","e.g. Happy birthday!","p. ej. ¡Feliz cumpleaños!","ex. Joyeux anniversaire !","z. B. Alles Gute!"],
+color:["Colore","Color","Color","Couleur","Farbe"],
+size:["Dimensione","Size","Tamaño","Taille","Größe"],
+big:["Grande","Large","Grande","Grand","Groß"],
+small:["Piccolo","Small","Pequeño","Petit","Klein"],
+add_msg:["Aggiungi messaggio","Add message","Añadir mensaje","Ajouter le message","Nachricht hinzufügen"],
+msg_added:["Messaggio aggiunto","Message added","Mensaje añadido","Message ajouté","Nachricht hinzugefügt"],
+enter_msg:["Scrivi il messaggio","Enter the message","Escribe el mensaje","Saisissez le message","Nachricht eingeben"],
+t_set:["Impostazioni","Settings","Ajustes","Réglages","Einstellungen"],
+disp_time:["Ora sul display","Time on display","Hora en pantalla","Heure affichée","Zeit auf dem Display"],
+units:["Unità","Units","Unidades","Unités","Einheit"],
+fmt:["Formato ora","Time format","Formato de hora","Format de l'heure","Zeitformat"],
+h24:["24 ore","24 hours","24 horas","24 heures","24 Stunden"],
+h12:["12 ore (puntino = PM)","12 hours (dot = PM)","12 horas (punto = PM)","12 heures (point = PM)","12 Stunden (Punkt = PM)"],
+br_day:["Luminosità di giorno","Daytime brightness","Brillo de día","Luminosité de jour","Helligkeit tagsüber"],
+auto:["Luminosità automatica (sensore LDR)","Automatic brightness (LDR sensor)","Brillo automático (sensor LDR)","Luminosité automatique (capteur LDR)","Automatische Helligkeit (LDR-Sensor)"],
+night_on:["Fascia notturna a orari","Night mode on a schedule","Modo noche con horario","Mode nuit programmé","Nachtmodus nach Zeitplan"],
+n_start:["Inizio notte","Night starts","Inicio de la noche","Début de la nuit","Nachtbeginn"],
+n_end:["Fine notte","Night ends","Fin de la noche","Fin de la nuit","Nachtende"],
+br_night:["Luminosità di notte","Night brightness","Brillo de noche","Luminosité de nuit","Helligkeit nachts"],
+spd:["Velocità caduta blocchi","Block fall speed","Velocidad de caída","Vitesse de chute","Fallgeschwindigkeit"],
+trspd:["Velocità scorrimento tra le pagine","Page slide speed","Velocidad entre páginas","Vitesse entre les pages","Seitenwechsel-Tempo"],
+mspd:["Velocità messaggi scorrevoli","Scrolling message speed","Velocidad de los mensajes","Vitesse des messages","Lauftext-Tempo"],
+s_time:["Sec. ora","Clock secs","Seg. hora","Sec. heure","Sek. Uhr"],
+s_wx:["Sec. meteo","Weather secs","Seg. tiempo","Sec. météo","Sek. Wetter"],
+s_city:["Sec. altre città","Other cities secs","Seg. otras ciudades","Sec. autres villes","Sek. andere Städte"],
+save:["Salva","Save","Guardar","Enregistrer","Speichern"],
+save_replay:["Salva e rigioca l'animazione","Save and replay the animation","Guardar y repetir la animación","Enregistrer et rejouer l'animation","Speichern und Animation wiederholen"],
+refresh:["Aggiorna meteo adesso","Refresh weather now","Actualizar el tiempo ahora","Actualiser la météo","Wetter jetzt aktualisieren"],
+wifi_reset:["Reimposta WiFi (riapre il portale)","Reset WiFi (reopens the portal)","Restablecer WiFi (reabre el portal)","Réinitialiser le WiFi (rouvre le portail)","WLAN zurücksetzen (öffnet das Portal)"],
+saving:["Salvataggio…","Saving…","Guardando…","Enregistrement…","Speichere…"],
+saved:["Salvato","Saved","Guardado","Enregistré","Gespeichert"],
+save_err:["Errore di salvataggio","Save error","Error al guardar","Erreur d'enregistrement","Fehler beim Speichern"],
+anim_started:["Animazione avviata","Animation started","Animación iniciada","Animation lancée","Animation gestartet"],
+error:["Errore","Error","Error","Erreur","Fehler"],
+req_sent:["Richiesta inviata","Request sent","Solicitud enviada","Demande envoyée","Anfrage gesendet"],
+confirm_reset:["Cancello la rete WiFi salvata? Il display riavvierà il portale di configurazione.","Delete the saved WiFi network? The display will reopen the setup portal.","¿Borrar la red WiFi guardada? La pantalla reabrirá el portal de configuración.","Effacer le réseau WiFi enregistré ? L'afficheur rouvrira le portail de configuration.","Gespeichertes WLAN löschen? Das Display öffnet wieder das Einrichtungsportal."],
+restarting:["Riavvio…","Restarting…","Reiniciando…","Redémarrage…","Neustart…"],
+t_wifi:["Rete WiFi","WiFi network","Red WiFi","Réseau WiFi","WLAN-Netz"],
+connected_to:["Collegato a {0} ({1} dBm), indirizzo {2}","Connected to {0} ({1} dBm), address {2}","Conectado a {0} ({1} dBm), dirección {2}","Connecté à {0} ({1} dBm), adresse {2}","Verbunden mit {0} ({1} dBm), Adresse {2}"],
+press_scan:["Premi «Cerca reti»","Press “Scan networks”","Pulsa «Buscar redes»","Appuyez sur « Chercher »","„Netze suchen“ drücken"],
+scan:["Cerca reti","Scan networks","Buscar redes","Chercher","Netze suchen"],
+scanning:["Cerco reti…","Scanning…","Buscando redes…","Recherche…","Suche läuft…"],
+prot:["protetta","secured","protegida","protégé","geschützt"],
+other_net:["Altra rete (nascosta)…","Other network (hidden)…","Otra red (oculta)…","Autre réseau (masqué)…","Anderes Netz (versteckt)…"],
+ph_ssid:["Nome rete (SSID)","Network name (SSID)","Nombre de la red (SSID)","Nom du réseau (SSID)","Netzwerkname (SSID)"],
+ph_pass:["Password (vuota se la rete è aperta)","Password (empty if the network is open)","Contraseña (vacía si la red es abierta)","Mot de passe (vide si le réseau est ouvert)","Passwort (leer bei offenem Netz)"],
+connect:["Collega a questa rete","Connect to this network","Conectar a esta red","Se connecter à ce réseau","Mit diesem Netz verbinden"],
+choose_net:["Scegli una rete","Choose a network","Elige una red","Choisissez un réseau","Netz auswählen"],
+pass_min:["La password deve avere almeno 8 caratteri","The password must have at least 8 characters","La contraseña debe tener al menos 8 caracteres","Le mot de passe doit comporter au moins 8 caractères","Das Passwort braucht mindestens 8 Zeichen"],
+net_err:["Errore di rete","Network error","Error de red","Erreur réseau","Netzwerkfehler"],
+no_result:["Nessun risultato, riprova","No results, try again","Sin resultados, inténtalo de nuevo","Aucun résultat, réessayez","Keine Treffer, nochmal versuchen"],
+connecting:["Collegamento in corso… Se la pagina smette di rispondere, collega il telefono alla nuova rete e apri http://tetrisclock.local oppure l'indirizzo mostrato sul display.","Connecting… If the page stops responding, join the new network with your phone and open http://tetrisclock.local or the address shown on the display.","Conectando… Si la página deja de responder, conecta el móvil a la nueva red y abre http://tetrisclock.local o la dirección mostrada en la pantalla.","Connexion en cours… Si la page ne répond plus, connectez le téléphone au nouveau réseau et ouvrez http://tetrisclock.local ou l'adresse affichée.","Verbinde… Reagiert die Seite nicht mehr, verbinde das Handy mit dem neuen Netz und öffne http://tetrisclock.local oder die angezeigte Adresse."],
+connected_ok:["Collegato a {0} · {1}","Connected to {0} · {1}","Conectado a {0} · {1}","Connecté à {0} · {1}","Verbunden mit {0} · {1}"],
+w_fail:["Non riesco a collegarmi a {0}. Ho rimesso la rete precedente.","Cannot connect to {0}. The previous network was restored.","No puedo conectar a {0}. He restaurado la red anterior.","Impossible de se connecter à {0}. Le réseau précédent a été rétabli.","Verbindung zu {0} fehlgeschlagen. Das vorherige Netz wurde wiederhergestellt."],
+c_clear:["Sereno","Clear","Despejado","Dégagé","Klar"],
+c_partly:["Parzialmente nuvoloso","Partly cloudy","Parcialmente nublado","Partiellement nuageux","Teils bewölkt"],
+c_cloudy:["Coperto","Overcast","Cubierto","Couvert","Bedeckt"],
+c_fog:["Nebbia","Fog","Niebla","Brouillard","Nebel"],
+c_drizzle:["Pioggerella","Drizzle","Llovizna","Bruine","Nieselregen"],
+c_rain:["Pioggia","Rain","Lluvia","Pluie","Regen"],
+c_snow:["Neve","Snow","Nieve","Neige","Schnee"],
+c_storm:["Temporale","Thunderstorm","Tormenta","Orage","Gewitter"],
+e_net:["e_net","Network unreachable","Red no disponible","Réseau injoignable","Netz nicht erreichbar"],
+e_geo:["Città non trovata","City not found","Ciudad no encontrada","Ville introuvable","Stadt nicht gefunden"],
+e_resp:["Risposta non valida","Invalid response","Respuesta no válida","Réponse invalide","Ungültige Antwort"],
+e_wx:["e_wx","Weather unreachable","Tiempo no disponible","Météo injoignable","Wetter nicht erreichbar"],
+s_badcity:["Nome città non valido","Invalid city name","Nombre de ciudad no válido","Nom de ville invalide","Ungültiger Stadtname"],
+s_maxcity:["Massimo 6 città","Maximum 6 cities","Máximo 6 ciudades","6 villes maximum","Höchstens 6 Städte"],
+s_nocity:["Città inesistente","No such city","La ciudad no existe","Ville inexistante","Stadt existiert nicht"],
+s_msglen:["s_msglen","The message must be 1 to 160 characters","El mensaje debe tener de 1 a 160 caracteres","Le message doit faire de 1 à 160 caractères","Die Nachricht braucht 1 bis 160 Zeichen"],
+s_maxmsg:["Massimo 6 messaggi","Maximum 6 messages","Máximo 6 mensajes","6 messages maximum","Höchstens 6 Nachrichten"],
+s_nomsg:["s_nomsg","No such message","El mensaje no existe","Message inexistant","Nachricht existiert nicht"],
+s_noprint:["s_noprint","The message has no displayable characters","El mensaje no tiene caracteres visibles","Le message n'a pas de caractères affichables","Die Nachricht enthält keine darstellbaren Zeichen"],
+s_ssid:["s_ssid","Invalid network name","Nombre de red no válido","Nom de réseau invalide","Ungültiger Netzname"],
+s_wpass:["s_wpass","The password must be 8 to 63 characters","La contraseña debe tener de 8 a 63 caracteres","Le mot de passe doit faire de 8 à 63 caractères","Das Passwort braucht 8 bis 63 Zeichen"],
+s_busy:["Collegamento già in corso","Already connecting","Ya se está conectando","Connexion déjà en cours","Verbindung läuft bereits"]
+};
+let lang=0,filled=false,F=false,last=null;
+function t(k,...a){const e=D[k];let s=e?(e[lang]||e[0]):k;a.forEach((v,i)=>{s=s.split("{"+i+"}").join(v)});return s;}
+function applyLang(){
+  document.documentElement.lang=["it","en","es","fr","de"][lang];
+  document.querySelectorAll("[data-i]").forEach(e=>{e.textContent=t(e.dataset.i)});
+  document.querySelectorAll("[data-ph]").forEach(e=>{e.placeholder=t(e.dataset.ph)});
+  const w=$("wl");if(!w.options.length||!w.dataset.scanned){w.innerHTML="";const o=document.createElement("option");o.value="";o.textContent=t("press_scan");w.appendChild(o);}
+  if(last){renderCities(last.cities);renderMsgs(last.msgs);}
+}
+function condOf(c){return c<=1?"c_clear":c==2?"c_partly":c==3?"c_cloudy":(c==45||c==48)?"c_fog":(c>=51&&c<=57)?"c_drizzle":((c>=61&&c<=67)||(c>=80&&c<=82))?"c_rain":((c>=71&&c<=77)||c==85||c==86)?"c_snow":c>=95?"c_storm":"c_cloudy";}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let filled=false,F=false;
-function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e;}
-function say(id,t,c){const m=$(id);m.textContent=t;m.className="msgs "+(c||"");}
-async function post(u,o){const r=await fetch(u,{method:"POST",body:new URLSearchParams(o||{})});if(!r.ok)throw new Error(await r.text());return r;}
-function btn(t,fn){const b=el("button","sec sm",t);b.type="button";b.onclick=fn;return b;}
+function el(tg,c,x){const e=document.createElement(tg);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e;}
+function say(id,x,c){const m=$(id);m.textContent=x;m.className="msgs "+(c||"");}
+async function post(u,o){const r=await fetch(u,{method:"POST",body:new URLSearchParams(o||{})});if(!r.ok)throw new Error(t(await r.text()));return r;}
+function btn(x,fn){const b=el("button","sec sm",x);b.type="button";b.onclick=fn;return b;}
 function renderCities(a){
   const box=$("cl");box.innerHTML="";
-  if(!a.length){box.appendChild(el("div","mut","Nessuna città: aggiungine una qui sotto."));return;}
+  if(!a.length){box.appendChild(el("div","mut",t("no_city")));return;}
   a.forEach((c,i)=>{
     const it=el("div","item"),l=el("div");
-    const t=el("div");const b=el("span","big",c.place);t.appendChild(b);
-    if(i==0)t.appendChild(el("span","tag","principale"));
-    l.appendChild(t);
+    const h=el("div");h.appendChild(el("span","big",c.place));
+    if(i==0)h.appendChild(el("span","tag",t("main_tag")));
+    l.appendChild(h);
     let d;
-    if(c.ok){const x=F?c.temp*9/5+32:c.temp;d=Math.round(x)+"°"+(F?"F":"C")+" · "+c.hum+"% · "+(COND[c.code]||"")+" · "+Math.round(c.age/60)+" min fa";}
-    else d=c.err||"In attesa dei dati meteo…";
+    if(c.ok){const x=F?c.temp*9/5+32:c.temp;d=Math.round(x)+"°"+(F?"F":"C")+" · "+c.hum+"% · "+t(condOf(c.code))+" · "+t("min_ago",Math.round(c.age/60));}
+    else d=c.err?t(c.err):t("waiting");
     l.appendChild(el("div","mut",d));
     it.appendChild(l);
     const bs=el("div","btns");
-    if(i>0)bs.appendChild(btn("Principale",async()=>{try{await post("/api/city/main",{i:i});load();}catch(e){say("cmsg",e.message,"err");}}));
-    bs.appendChild(btn("Rimuovi",async()=>{if(!confirm("Rimuovere "+c.n+"?"))return;try{await post("/api/city/del",{i:i});load();}catch(e){say("cmsg",e.message,"err");}}));
+    if(i>0)bs.appendChild(btn(t("make_main"),async()=>{try{await post("/api/city/main",{i:i});load();}catch(e){say("cmsg",e.message,"err");}}));
+    bs.appendChild(btn(t("remove"),async()=>{if(!confirm(t("confirm_rm",c.n)))return;try{await post("/api/city/del",{i:i});load();}catch(e){say("cmsg",e.message,"err");}}));
     it.appendChild(bs);box.appendChild(it);
   });
 }
 function renderMsgs(a){
   const box=$("ml");box.innerHTML="";
-  if(!a.length){box.appendChild(el("div","mut","Nessun messaggio."));return;}
+  if(!a.length){box.appendChild(el("div","mut",t("no_msg")));return;}
   a.forEach((m,i)=>{
     const it=el("div","item"),l=el("div");
     const s=el("div","big",m.t);s.style.color=m.c;s.style.wordBreak="break-word";l.appendChild(s);
-    l.appendChild(el("div","mut",m.s==2?"grande":"piccolo"));
+    l.appendChild(el("div","mut",m.s==2?t("big"):t("small")));
     it.appendChild(l);
-    it.appendChild(btn("Rimuovi",async()=>{try{await post("/api/msg/del",{i:i});load();}catch(e){say("mmsg",e.message,"err");}}));
+    it.appendChild(btn(t("remove"),async()=>{try{await post("/api/msg/del",{i:i});load();}catch(e){say("mmsg",e.message,"err");}}));
     box.appendChild(it);
   });
 }
+function hm(m){return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
+function mn(v){const p=(v||"0:0").split(":");return (+p[0])*60+(+p[1]);}
+function nvis(){$("nbox").style.display=$("non").checked?"block":"none";}
 async function load(){
   try{
     const s=await (await fetch("/api/status")).json();
-    F=s.cfg.f;
+    last=s;F=s.cfg.f;
+    if(!filled){lang=s.cfg.lang;}
     $("time").textContent=s.time;
     $("net").textContent=s.ssid+" · "+s.ip+" · "+s.rssi+" dBm";
-    $("wcur").textContent="Collegato a "+s.ssid+" ("+s.rssi+" dBm), indirizzo "+s.ip;
+    $("wcur").textContent=t("connected_to",s.ssid,s.rssi,s.ip);
     renderCities(s.cities);renderMsgs(s.msgs);
     if(!filled){
       const c=s.cfg;
+      $("lang").value=c.lang;applyLang();
       $("units").value=c.f?"F":"C";$("fmt").value=c.h12?"12":"24";
       $("br").value=c.br;$("auto").checked=c.auto;$("br").disabled=c.auto;
+      $("non").checked=c.non;$("nst").value=hm(c.nst);$("nen").value=hm(c.nen);$("nbr").value=c.nbr;nvis();
       $("spd").value=c.spd;$("spdv").textContent=c.spd;
       $("trspd").value=c.trspd;$("trv").textContent=c.trspd;
       $("mspd").value=c.mspd;$("mspv").textContent=c.mspd;
-      $("non").checked=c.non;$("nst").value=hm(c.nst);$("nen").value=hm(c.nen);$("nbr").value=c.nbr;nvis();
       $("tsec").value=c.tsec;$("wsec").value=c.wsec;$("csec").value=c.csec;
       filled=true;
     }
   }catch(e){}
 }
-function hm(m){return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
-function mn(v){const p=(v||"0:0").split(":");return (+p[0])*60+(+p[1]);}
-function nvis(){$("nbox").style.display=$("non").checked?"block":"none";}
+$("lang").onchange=()=>{lang=+$("lang").value;applyLang();};
 $("non").onchange=nvis;
 $("auto").onchange=()=>{$("br").disabled=$("auto").checked};
 $("spd").oninput=()=>{$("spdv").textContent=$("spd").value};
 $("trspd").oninput=()=>{$("trv").textContent=$("trspd").value};
 $("mspd").oninput=()=>{$("mspv").textContent=$("mspd").value};
 $("cadd").onclick=async()=>{
-  const city=$("ncity").value.trim();if(!city){say("cmsg","Scrivi il nome della città","err");return;}
+  const city=$("ncity").value.trim();if(!city){say("cmsg",t("enter_city"),"err");return;}
   try{await post("/api/city/add",{city:city,country:$("ncc").value.trim().toUpperCase()});
-    $("ncity").value="";$("ncc").value="";say("cmsg","Città aggiunta. Cerco il meteo…","ok");load();setTimeout(load,4000);}
+    $("ncity").value="";$("ncc").value="";say("cmsg",t("city_added"),"ok");load();setTimeout(load,4000);}
   catch(e){say("cmsg",e.message,"err");}
 };
 $("madd").onclick=async()=>{
-  const t=$("mt").value.trim();if(!t){say("mmsg","Scrivi il messaggio","err");return;}
-  try{await post("/api/msg/add",{text:t,color:$("mc").value,size:$("ms").value});
-    $("mt").value="";say("mmsg","Messaggio aggiunto","ok");load();}
+  const x=$("mt").value.trim();if(!x){say("mmsg",t("enter_msg"),"err");return;}
+  try{await post("/api/msg/add",{text:x,color:$("mc").value,size:$("ms").value});
+    $("mt").value="";say("mmsg",t("msg_added"),"ok");load();}
   catch(e){say("mmsg",e.message,"err");}
 };
 async function save(){
-  await post("/api/config",{units:$("units").value,fmt:$("fmt").value,br:$("br").value,auto:$("auto").checked?"1":"0",
+  await post("/api/config",{lang:$("lang").value,units:$("units").value,fmt:$("fmt").value,br:$("br").value,auto:$("auto").checked?"1":"0",
     non:$("non").checked?"1":"0",nst:mn($("nst").value),nen:mn($("nen").value),nbr:$("nbr").value,
     spd:$("spd").value,trspd:$("trspd").value,mspd:$("mspd").value,tsec:$("tsec").value,wsec:$("wsec").value,csec:$("csec").value});
 }
 $("f").onsubmit=async e=>{
-  e.preventDefault();say("msg","Salvataggio…");
-  try{await save();say("msg","Salvato","ok");load();}catch(x){say("msg","Errore di salvataggio","err");}
+  e.preventDefault();say("msg",t("saving"));
+  try{await save();say("msg",t("saved"),"ok");load();}catch(x){say("msg",t("save_err"),"err");}
 };
 $("rp").onclick=async()=>{
-  try{await save();await post("/api/replay");say("msg","Animazione avviata","ok");}catch(x){say("msg","Errore","err");}
+  try{await save();await post("/api/replay");say("msg",t("anim_started"),"ok");}catch(x){say("msg",t("error"),"err");}
 };
-$("rf").onclick=async()=>{await post("/api/refresh");say("msg","Richiesta inviata","ok");setTimeout(load,3500);};
+$("rf").onclick=async()=>{await post("/api/refresh");say("msg",t("req_sent"),"ok");setTimeout(load,3500);};
 $("wr").onclick=async()=>{
-  if(!confirm("Cancello la rete WiFi salvata? Il display riavvierà il portale di configurazione."))return;
-  post("/api/wifi-reset");say("msg","Riavvio…");
+  if(!confirm(t("confirm_reset")))return;
+  post("/api/wifi-reset");say("msg",t("restarting"));
 };
-function wmsg(t,c){const m=$("wmsg");m.textContent=t;m.className="mut "+(c||"");}
+function wmsg(x,c){const m=$("wmsg");m.textContent=x;m.className="mut "+(c||"");}
 function wsel(){$("wo").style.display=$("wl").value==="__other__"?"block":"none";}
 async function wscan(){
-  const sel=$("wl");sel.innerHTML="";
-  const o=document.createElement("option");o.value="";o.textContent="Cerco reti…";sel.appendChild(o);
+  const sel=$("wl");sel.innerHTML="";sel.dataset.scanned="1";
+  const o=document.createElement("option");o.value="";o.textContent=t("scanning");sel.appendChild(o);
   wmsg("");
   for(let i=0;i<15;i++){
     let r;
-    try{r=await (await fetch("/api/wifi/scan")).json();}catch(e){wmsg("Errore di rete","err");return;}
+    try{r=await (await fetch("/api/wifi/scan")).json();}catch(e){wmsg(t("net_err"),"err");return;}
     if(!r.scanning){
       sel.innerHTML="";
-      r.nets.forEach(n=>{const op=document.createElement("option");op.value=n.ssid;op.textContent=n.ssid+" ("+n.rssi+" dBm"+(n.open?"":", protetta")+")";sel.appendChild(op);});
-      const x=document.createElement("option");x.value="__other__";x.textContent="Altra rete (nascosta)…";sel.appendChild(x);
+      r.nets.forEach(n=>{const op=document.createElement("option");op.value=n.ssid;op.textContent=n.ssid+" ("+n.rssi+" dBm"+(n.open?"":", "+t("prot"))+")";sel.appendChild(op);});
+      const x=document.createElement("option");x.value="__other__";x.textContent=t("other_net");sel.appendChild(x);
       wsel();return;
     }
     await sleep(1000);
   }
-  wmsg("Nessun risultato, riprova","err");
+  wmsg(t("no_result"),"err");
 }
 $("wl").onchange=wsel;$("ws").onclick=wscan;
+function wtxt(m){if(m.indexOf("w_fail|")==0)return t("w_fail",m.slice(7));return m;}
 $("wc").onclick=async()=>{
   const ssid=$("wl").value==="__other__"?$("wo").value:$("wl").value;
-  if(!ssid){wmsg("Scegli una rete","err");return;}
+  if(!ssid){wmsg(t("choose_net"),"err");return;}
   const pass=$("wp").value;
-  if(pass&&pass.length<8){wmsg("La password deve avere almeno 8 caratteri","err");return;}
+  if(pass&&pass.length<8){wmsg(t("pass_min"),"err");return;}
   let r;
-  try{r=await fetch("/api/wifi/connect",{method:"POST",body:new URLSearchParams({ssid:ssid,pass:pass})});}catch(e){wmsg("Errore di rete","err");return;}
-  if(!r.ok){wmsg(await r.text(),"err");return;}
-  wmsg("Collegamento in corso… Se la pagina smette di rispondere, collega il telefono alla nuova rete e apri http://tetrisclock.local oppure l'indirizzo mostrato sul display.");
+  try{r=await fetch("/api/wifi/connect",{method:"POST",body:new URLSearchParams({ssid:ssid,pass:pass})});}catch(e){wmsg(t("net_err"),"err");return;}
+  if(!r.ok){wmsg(t(await r.text()),"err");return;}
+  wmsg(t("connecting"));
   for(let i=0;i<20;i++){
     await sleep(2000);
     try{
       const s=await (await fetch("/api/wifi/state")).json();
-      if(s.state===2){wmsg("Collegato a "+s.ssid+" · "+s.ip,"ok");$("wp").value="";return;}
-      if(s.state===3){wmsg(s.msg,"err");return;}
+      if(s.state===2){wmsg(t("connected_ok",s.ssid,s.ip),"ok");$("wp").value="";return;}
+      if(s.state===3){wmsg(wtxt(s.msg),"err");return;}
     }catch(e){}
   }
 };
-load();setInterval(load,5000);
-</script></body></html>)rawliteral";
+applyLang();load();setInterval(load,5000);
+</script></body></html>
+)rawliteral";
 
 void handleStatus() {
   JsonDocument d;
@@ -1231,6 +1357,7 @@ void handleStatus() {
   c["nst"] = cfg.nightStart;
   c["nen"] = cfg.nightEnd;
   c["nbr"] = cfg.nightBr;
+  c["lang"] = cfg.lang;
   xSemaphoreGive(mtx);
   String out;
   serializeJson(d, out);
@@ -1253,6 +1380,14 @@ void handleConfig() {
   cfg.nightStart = constrain(server.arg("nst").toInt(), 0, 1439);
   cfg.nightEnd = constrain(server.arg("nen").toInt(), 0, 1439);
   cfg.nightBr = constrain(server.arg("nbr").toInt(), 1, 255);
+  if (server.hasArg("lang")) {
+    uint8_t nl = constrain(server.arg("lang").toInt(), 0, LANG_N - 1);
+    if (nl != cfg.lang) {
+      cfg.lang = nl;
+      geoClear = true;  // i nomi delle citta' arrivano nella nuova lingua
+      wxRefresh = true;
+    }
+  }
   saveSettings();
   xSemaphoreGive(mtx);
   needDraw = true;
@@ -1268,13 +1403,13 @@ void handleCityAdd() {
   cc.toUpperCase();
   if (cc.length() != 2) cc = "";
   if (city.length() == 0 || city.length() > 40) {
-    server.send(400, "text/plain", "Nome citta' non valido");
+    server.send(400, "text/plain", "s_badcity");
     return;
   }
   xSemaphoreTake(mtx, portMAX_DELAY);
   if (nCity >= MAXC) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Massimo " + String(MAXC) + " citta'");
+    server.send(400, "text/plain", "s_maxcity");
     return;
   }
   cities[nCity].name = city;
@@ -1293,7 +1428,7 @@ void handleCityDel() {
   xSemaphoreTake(mtx, portMAX_DELAY);
   if (i < 0 || i >= nCity) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Citta' inesistente");
+    server.send(400, "text/plain", "s_nocity");
     return;
   }
   for (int k = i; k < nCity - 1; k++) {
@@ -1316,7 +1451,7 @@ void handleCityMain() {
   xSemaphoreTake(mtx, portMAX_DELAY);
   if (i <= 0 || i >= nCity) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Citta' non valida");
+    server.send(400, "text/plain", "s_nocity");
     return;
   }
   std::swap(cities[0], cities[i]);
@@ -1333,7 +1468,7 @@ void handleMsgAdd() {
   String text = server.arg("text");
   text.trim();
   if (text.length() == 0 || text.length() > 160) {
-    server.send(400, "text/plain", "Il messaggio deve avere da 1 a 160 caratteri");
+    server.send(400, "text/plain", "s_msglen");
     return;
   }
   String col = server.arg("color");
@@ -1343,7 +1478,7 @@ void handleMsgAdd() {
   xSemaphoreTake(mtx, portMAX_DELAY);
   if (nMsg >= MAXM) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Massimo " + String(MAXM) + " messaggi");
+    server.send(400, "text/plain", "s_maxmsg");
     return;
   }
   msgs[nMsg].text = text;
@@ -1352,7 +1487,7 @@ void handleMsgAdd() {
   foldMsg(msgs[nMsg]);
   if (msgs[nMsg].disp.length() == 0) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Il messaggio non ha caratteri visualizzabili");
+    server.send(400, "text/plain", "s_noprint");
     return;
   }
   nMsg++;
@@ -1366,7 +1501,7 @@ void handleMsgDel() {
   xSemaphoreTake(mtx, portMAX_DELAY);
   if (i < 0 || i >= nMsg) {
     xSemaphoreGive(mtx);
-    server.send(400, "text/plain", "Messaggio inesistente");
+    server.send(400, "text/plain", "s_nomsg");
     return;
   }
   for (int k = i; k < nMsg - 1; k++) msgs[k] = msgs[k + 1];
@@ -1416,15 +1551,15 @@ void handleWifiScan() {
 void handleWifiConnect() {
   String ssid = server.arg("ssid"), pass = server.arg("pass");
   if (ssid.length() == 0 || ssid.length() > 32) {
-    server.send(400, "text/plain", "Nome rete non valido");
+    server.send(400, "text/plain", "s_ssid");
     return;
   }
   if (pass.length() > 63 || (pass.length() > 0 && pass.length() < 8)) {
-    server.send(400, "text/plain", "La password deve avere da 8 a 63 caratteri");
+    server.send(400, "text/plain", "s_wpass");
     return;
   }
   if (wifiState == 1) {
-    server.send(409, "text/plain", "Collegamento gia' in corso");
+    server.send(409, "text/plain", "s_busy");
     return;
   }
   wifiJob.ssid = ssid;
@@ -1453,7 +1588,7 @@ void processWifiJob() {
   wifiJob.pending = false;
   String oldSsid = WiFi.SSID(), oldPass = WiFi.psk();
   String l1 = wifiJob.ssid.substring(0, 10), l2 = wifiJob.ssid.length() > 10 ? wifiJob.ssid.substring(10, 20) : String("");
-  showLines("WIFI", "Collego a:", l1.c_str(), l2.c_str());
+  showLines("WIFI", "-> ", l1.c_str(), l2.c_str());
   WiFi.begin(wifiJob.ssid.c_str(), wifiJob.pass.c_str());
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) delay(200);
@@ -1473,7 +1608,7 @@ void processWifiJob() {
       uint32_t t1 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - t1 < 10000) delay(200);
     }
-    wifiMsg = "Non riesco a collegarmi a " + wifiJob.ssid + ". Ho rimesso la rete precedente.";
+    wifiMsg = "w_fail|" + wifiJob.ssid;
     wifiState = 3;
   }
   wifiJob.pass = "";
@@ -1550,18 +1685,44 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
   WiFiManager wm;
+  // Scelta della lingua nel portale: un menu a tendina che riempie un campo nascosto
+  static char langHtml[700];
+  {
+    static const char *NAMES[LANG_N] = {"Italiano", "English", "Espa&ntilde;ol", "Fran&ccedil;ais", "Deutsch"};
+    String h = "<br/><label for='lsel'>Lingua / Language / Idioma / Langue / Sprache</label>"
+               "<select id='lsel' onchange=\"document.getElementById('lang').value=this.value\">";
+    for (int i = 0; i < LANG_N; i++) {
+      h += "<option value='" + String(LANG_CODE[i]) + "'" + (i == cfg.lang ? " selected" : "") + ">" + NAMES[i] + "</option>";
+    }
+    h += "</select>";
+    strlcpy(langHtml, h.c_str(), sizeof(langHtml));
+  }
+  WiFiManagerParameter langSelect(langHtml);
+  WiFiManagerParameter langField("lang", "", LANG_CODE[cfg.lang], 2, "type='hidden'", WFM_NO_LABEL);
+  wm.addParameter(&langSelect);
+  wm.addParameter(&langField);
   wm.setConnectTimeout(20);
-  wm.setAPCallback([](WiFiManager *) { showLines("SETUP WIFI", "Rete:", AP_NAME, "192.168.4.1"); });
+  wm.setAPCallback([](WiFiManager *) { showLines("SETUP WIFI", "WiFi:", AP_NAME, "192.168.4.1"); });
   if (!wm.autoConnect(AP_NAME)) {
     ESP.restart();
   }
   WiFi.setAutoReconnect(true);
+  {
+    // lingua scelta nel portale (se e' stato mostrato); altrimenti resta quella salvata
+    String l = langField.getValue();
+    for (int i = 0; i < LANG_N; i++)
+      if (l == LANG_CODE[i] && (i != cfg.lang || !langKnown)) {
+        cfg.lang = i;
+        prefs.putUChar("lang", cfg.lang);
+        langKnown = true;
+      }
+  }
 
   if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
   setupWeb();
 
   configTime(0, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
-  showLines("WiFi OK", "Sync ora", "...");
+  showLines("WiFi OK", "NTP", "...");
   for (int i = 0; i < 40 && time(nullptr) < 1700000000; i++) delay(250);
 
   WiFi.setSleep(false);  // niente risparmio energetico: la pagina web risponde molto piu' in fretta
@@ -1672,7 +1833,7 @@ void loop() {
     static uint32_t l = 0;
     if (now - l > 1000) {
       l = now;
-      showLines("Sync ora", "NTP...");
+      showLines("NTP", "Sync...");
     }
     delay(5);
     return;

@@ -13,6 +13,7 @@ Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con m
 - WiFi configurabile dal telefono (portale captive), senza password nel codice
 - **Cambio rete WiFi dalla pagina web**: «Cerca reti», scegli la rete (o inserisci una nascosta), password, «Collega». Se la nuova rete non risponde entro 15 secondi il display rimette quella precedente
 - Ora via NTP, fuso e ora legale seguiti dalla città scelta
+- **5 lingue** (italiano, English, español, français, Deutsch): si sceglie dal menu nel portale WiFi al primo avvio e si cambia in qualsiasi momento dalla pagina web. Cambiano i testi della pagina web, le condizioni meteo e i nomi delle città (arrivano nella lingua scelta)
 - Installazione da browser con un clic (ESP Web Tools)
 
 ## Come appare
@@ -97,7 +98,7 @@ pio run -t upload
 
 ## Primo avvio
 
-1. Collegati alla rete WiFi `TetrisClock` (si apre il portale; altrimenti `192.168.4.1`) e scegli la tua rete.
+1. Collegati alla rete WiFi `TetrisClock` (si apre il portale; altrimenti `192.168.4.1`), scegli la tua rete e la **lingua** dal menu «Lingua / Language».
 2. Il display fa scorrere l'indirizzo di configurazione. Apri `http://tetrisclock.local` (o l'IP) e imposta la città.
 
 ## Cambiare rete WiFi
