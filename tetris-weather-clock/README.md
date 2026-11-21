@@ -2,18 +2,47 @@
 
 Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con meteo animato.
 
-- **Ora grande**: cifre di 12×24 pixel fatte di tetramini veri, ognuno di un colore vivo diverso (rosso, arancio, giallo, verde, ciano, blu, viola) con rilievo marcato. I pezzi cadono uno alla volta, ruotano e si spostano di lato durante la caduta e si impilano a formare la cifra. Quando una cifra cambia, i vecchi pezzi cadono fuori dal pannello.
-- **Scorrimento**: il passaggio da ora a meteo e viceversa scorre da destra a sinistra (circa 0,65 s).
+- **Ora grande**: cifre alte 28 pixel e larghe 12, a tratto spesso (griglia 3×7 di blocchi da 4 px), fatte di tetramini veri, ognuno di un colore vivo diverso (rosso, arancio, giallo, verde, ciano, blu, viola) con rilievo marcato. I pezzi cadono uno alla volta, ruotano e si spostano di lato durante la caduta e si impilano a formare la cifra. Quando una cifra cambia, i vecchi pezzi cadono fuori dal pannello.
+- **Scorrimento**: il passaggio tra le pagine scorre da destra a sinistra; la velocità si regola dal web (da circa 1,6 s a 0,2 s).
 - **Meteo piccolo**: nome della città e del paese in alto (scorre se è lungo), icona animata (sole che ruota, luna e stelle, nuvole, pioggia, neve, temporale, nebbia), termometro e goccia colorati con temperatura e umidità in carattere piccolo.
 - **Velocità regolabile** dalla pagina web (1–10), con il pulsante «Salva e rigioca l'animazione» per vedere subito l'effetto.
 - **Più città**: la prima mostra ora grande + meteo; dalla seconda in poi ogni città ha una sola schermata con meteo e ora locale (max 6, aggiungi/rimuovi/rendi principale dal web)
 - **Messaggi scorrevoli**: pagine di testo (colore, dimensione piccola/grande), max 6, gestite dal web
 - Velocità regolabili dal web: caduta blocchi, scorrimento tra le pagine, messaggi
-- Pagina web di configurazione: città, °C/°F, 12/24 ore, luminosità (anche automatica con l'LDR e con fascia notturna a orari), durata delle schermate
+- Pagina web di configurazione: città, messaggi, °C/°F, 12/24 ore, luminosità (anche automatica con l'LDR e con fascia notturna a orari), durata delle schermate
 - WiFi configurabile dal telefono (portale captive), senza password nel codice
 - **Cambio rete WiFi dalla pagina web**: «Cerca reti», scegli la rete (o inserisci una nascosta), password, «Collega». Se la nuova rete non risponde entro 15 secondi il display rimette quella precedente
 - Ora via NTP, fuso e ora legale seguiti dalla città scelta
 - Installazione da browser con un clic (ESP Web Tools)
+
+## Come appare
+
+Le immagini sono ricostruzioni fedeli del disegno del firmware (stesso font, stesse posizioni e colori); sul pannello reale i colori dipendono dal modello. Nella pagina web i dati sono di esempio.
+
+| Ora | Meteo (città principale) |
+|---|---|
+| ![Ora](docs/pannello-time.png) | ![Meteo](docs/pannello-weather.png) |
+
+| Pioggia | Altre città: meteo e ora insieme |
+|---|---|
+| ![Pioggia](docs/pannello-rain.png) | ![Città](docs/pannello-city.png) |
+
+| Messaggio scorrevole (grande) |
+|---|
+| ![Messaggio](docs/pannello-msg.png) |
+
+### Pagine e ordine di rotazione
+
+1. **Ora** grande (blocchi che cadono)
+2. **Meteo** della prima città
+3. **Altre città**, una pagina ciascuna con meteo e ora locale
+4. **Messaggi** scorrevoli, uno per pagina
+
+### Interfaccia web (`http://tetrisclock.local`)
+
+![Interfaccia web](docs/interfaccia-web.png)
+
+Dalla pagina si gestiscono: città (aggiungi, rimuovi, rendi principale), messaggi (testo, colore, dimensione), unità e formato ora, luminosità di giorno e di notte a orari, velocità di caduta, di scorrimento tra le pagine e dei messaggi, durata delle pagine e rete WiFi.
 
 ## Piedinatura (ESP32-Trinity)
 
@@ -27,7 +56,19 @@ Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con m
 | B2 | 13 | LAT | 4 |
 | CLK | 16 | OE | 15 |
 
-LDR opzionale su GPIO 35. Per cambiare i pin modifica i `#define PIN_*` in cima a `src/main.cpp`.
+LDR opzionale su GPIO 35. I segnali vanno al connettore **HUB75** (IDC 16 poli) del pannello; il GPIO 35 è solo ingresso e serve il partitore con una resistenza. Il pannello va alimentato a **5 V** separatamente (almeno 2–4 A a luminosità alta) con la massa in comune con l'ESP32. Con la scheda ESP32-Trinity il cablaggio è già fatto.
+
+```
+ESP32 GPIO   HUB75        ESP32 GPIO   HUB75
+25  -> R1                 23 -> A
+26  -> G1                 19 -> B
+27  -> B1                  5 -> C
+14  -> R2                 17 -> D
+12  -> G2                 18 -> E (pannelli 64x32 a 1/16 scan: lasciare E collegato anche se non usato)
+13  -> B2                  4 -> LAT
+16  -> CLK                15 -> OE
+```
+ Per cambiare i pin modifica i `#define PIN_*` in cima a `src/main.cpp`.
 
 ## Installazione automatica da browser
 
@@ -72,7 +113,7 @@ Dalla pagina `http://tetrisclock.local`, scheda «Rete WiFi». Se la nuova rete 
 ## Regolazioni nel codice
 
 - Velocità: tabella dei millisecondi per tick in `tickMs()` (`main.cpp`)
-- Durata dello scorrimento: `TR_MS` in `main.cpp`; colori dei pezzi: `KC` in `main.cpp`
+- Durata dello scorrimento: tabella in `trMs()` in `main.cpp`; colori dei pezzi: `KC` in `main.cpp`
 - Posizione delle cifre: `SLOT_X` in `main.cpp`; forma delle cifre: `FONT` in `TetrisEngine.h`
 - `DEFAULT_TZ`: fuso usato prima di conoscere la città
 - Colori sbagliati o disturbi sul pannello: in `setupDisplay()` prova `mxconfig.clkphase = false;` oppure `mxconfig.driver = HUB75_I2S_CFG::FM6124;`
@@ -80,6 +121,6 @@ Dalla pagina `http://tetrisclock.local`, scheda «Rete WiFi». Se la nuova rete 
 
 ## Note
 
-- In formato 12 ore l'ora resta nelle stesse posizioni (quando l'ora ha una sola cifra, la prima resta vuota) e compare un piccolo AM/PM in basso a destra.
+- In formato 12 ore l'ora resta nelle stesse posizioni (quando l'ora ha una sola cifra, la prima resta vuota) e un piccolo puntino ciano in basso indica il PM.
 - Il meteo arriva da [Open-Meteo](https://open-meteo.com/) (nessuna chiave API): sono i dati della città, non di un sensore locale.
 - Le richieste HTTPS non verificano il certificato (`setInsecure()`): vanno bene per dati meteo pubblici.

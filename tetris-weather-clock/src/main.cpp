@@ -864,12 +864,12 @@ void paintCity(const Weather &w, uint32_t t) {
   char buf[12];
   snprintf(buf, sizeof(buf), "%d", (int)lroundf(shown));
   uint16_t tc = tempColor(w.temp);
-  int xe = drawValue(buf, 25, 22, tc, strlen(buf) >= 3 ? 0 : (cfg.fahrenheit ? 'F' : 'C'), true);
+  int xe = drawValue(buf, 24, 22, tc, 0, true);  // temperatura con gradi, senza lettera
   int hum = constrain(w.hum, 0, 99);
   snprintf(buf, sizeof(buf), "%d", hum);
-  int xh = xe + 3;
-  if (xh < 47) xh = 47;
-  drawValue(buf, xh, 22, humColor(hum), '%', false);
+  int wh = (int)strlen(buf) * 6 + 6;  // cifre + simbolo %
+  int xh = max(xe + 2, PANEL_W - wh);
+  drawValue(buf, xh, 22, humColor(hum), xh + wh <= PANEL_W ? '%' : 0, false);
 }
 
 // Pagina con messaggio scorrevole da destra a sinistra
