@@ -46,6 +46,8 @@ Dalla pagina si gestiscono: città (aggiungi, rimuovi, rendi principale), messag
 
 ## Piedinatura (ESP32-Trinity)
 
+![Schema di collegamento ESP32 WROOM → HUB75](docs/schema-collegamento.png)
+
 | Segnale | GPIO | Segnale | GPIO |
 |---|---|---|---|
 | R1 | 25 | A | 23 |
