@@ -79,10 +79,18 @@ ESP32 GPIO   HUB75        ESP32 GPIO   HUB75
 
 ## Installazione automatica da browser
 
-1. Crea un repository su GitHub e carica il contenuto di questa cartella (ramo `main`).
-2. In *Settings → Pages* imposta *Source: GitHub Actions*.
-3. Il workflow `.github/workflows/build.yml` compila il firmware e pubblica la pagina di installazione.
-4. Apri l'indirizzo della pagina con **Chrome o Edge** da computer, collega l'ESP32 e premi il pulsante.
+La pagina `web/index.html` installa il firmware con un clic via USB (ESP Web Tools). **Non funziona aprendola con doppio clic**: il browser la blocca perché non arriva da `https://` o da `http://localhost`. Ci sono due modi per aprirla correttamente:
+
+**A. Sul tuo computer (serve Python 3)**
+1. Apri la cartella `web`.
+2. Windows: doppio clic su `avvia-installer.bat`. Mac/Linux: doppio clic su `avvia-installer.command` (o `./avvia-installer.command` da terminale).
+3. Si apre `http://localhost:8000`: collega l'ESP32 con un cavo USB **dati** e premi il pulsante.
+
+**B. Online con GitHub Pages**
+1. Nel repository: *Settings → Pages → Build and deployment → Deploy from a branch*, ramo `master`, cartella `/ (root)`.
+2. Dopo un minuto la pagina è su `https://NOME-UTENTE.github.io/NOME-REPO/tetris-weather-clock/web/`.
+
+Requisiti: **Chrome o Edge da computer** (Firefox, Safari e telefoni non supportano la porta seriale del browser) e connessione a internet (la libreria si scarica da `unpkg.com`). Se la porta non compare, installa il driver CP210x o CH340 e prova un altro cavo; se resta su «Connecting» tieni premuto `BOOT`. L'installazione cancella la memoria della scheda e al primo avvio compare il portale WiFi con la scelta della lingua.
 
 ## Compilazione con Arduino IDE (consigliata)
 

@@ -26,6 +26,10 @@
   .warn { color:#ffb454; }
   code { background:#0e1014; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:14px; }
   .mut { color:var(--mut); font-size:14px; }
+  .alert { background:#2a1d10; border:1px solid #7a4a12; color:#ffd9a3; border-radius:14px; padding:16px 20px; margin-bottom:16px; display:none; }
+  .alert h2 { color:#ffb454; }
+  details { margin-top:10px; }
+  summary { cursor:pointer; color:var(--acc); }
 </style>
 </head>
 <body>
@@ -34,7 +38,13 @@
   <h1>Tetris Weather Clock</h1>
   <p class="sub">Orologio a blocchi Tetris con meteo animato per ESP32 e pannello HUB75 64&times;32.</p>
 
-  <div class="card">
+  <div class="alert" id="fileWarn">
+    <h2>Questa pagina non va aperta con doppio clic</h2>
+    <p>L'installazione da browser funziona solo se la pagina arriva da un indirizzo <code>https://</code> oppure <code>http://localhost</code>. Aperta come file (<code>file://</code>) il pulsante non parte.</p>
+    <p><b>Soluzione rapida:</b> avvia <code>avvia-installer.bat</code> (Windows) o <code>avvia-installer.command</code> (Mac) dalla cartella <code>web</code>: si apre questa pagina da <code>http://localhost:8000</code> e funziona.</p>
+  </div>
+
+  <div class="card" id="installCard">
     <h2>1. Installa il firmware</h2>
     <p class="mut">Collega l'ESP32 al computer con un cavo USB <b>dati</b>, poi premi il pulsante.</p>
     <esp-web-install-button manifest="manifest.json">
@@ -46,6 +56,17 @@
       <li>Se la connessione fallisce, tieni premuto il tasto <code>BOOT</code> mentre parte il collegamento.</li>
       <li>L'installazione cancella la memoria della scheda: le impostazioni precedenti andranno perse.</li>
     </ul>
+    <details>
+      <summary>Non funziona? Controlla questi punti</summary>
+      <ul>
+        <li>Usa <b>Chrome</b> o <b>Edge</b> da computer (Firefox e Safari non supportano la porta seriale del browser; il telefono non va bene).</li>
+        <li>La pagina deve essere aperta da <code>https://</code> o da <code>http://localhost</code>, non con doppio clic sul file.</li>
+        <li>Usa un cavo USB che trasferisce <b>dati</b> (alcuni cavi caricano soltanto). La porta deve comparire nell'elenco; se non c'&egrave;, installa il driver <b>CP210x</b> o <b>CH340</b> a seconda della scheda.</li>
+        <li>Chiudi Arduino IDE, il Monitor seriale e ogni altro programma che usa la porta.</li>
+        <li>Se resta su &laquo;Connecting&raquo;, tieni premuto <code>BOOT</code> (a volte anche <code>EN</code> una volta) mentre parte il collegamento.</li>
+        <li>Serve internet: la pagina scarica la libreria di installazione da <code>unpkg.com</code>.</li>
+      </ul>
+    </details>
   </div>
 
   <div class="card">
@@ -53,18 +74,25 @@
     <ol>
       <li>Sul display compare <b>SETUP WIFI</b>: dal telefono collegati alla rete <code>TetrisClock</code>.</li>
       <li>Si apre da sola la pagina di configurazione (altrimenti vai su <code>192.168.4.1</code>).</li>
-      <li>Scegli la tua rete WiFi, inserisci la password e salva.</li>
+      <li>Scegli la tua rete WiFi e la <b>lingua</b> (italiano, English, espa&ntilde;ol, fran&ccedil;ais, Deutsch), inserisci la password e salva.</li>
     </ol>
   </div>
 
   <div class="card">
-    <h2>3. Imposta la citt&agrave;</h2>
+    <h2>3. Aggiungi citt&agrave; e messaggi</h2>
     <p>Quando il display ha scorso l'indirizzo IP, apri <code>http://tetrisclock.local</code> (o l'IP mostrato) dal telefono o dal PC sulla stessa rete.
-    Scrivi la citt&agrave;, scegli &deg;C/&deg;F, formato 12/24 ore e luminosit&agrave;, poi premi <b>Salva</b>.</p>
+    Aggiungi una o pi&ugrave; citt&agrave; (la prima mostra ora grande e meteo, le altre meteo e ora locale insieme), crea messaggi scorrevoli, scegli &deg;C/&deg;F, formato 12/24 ore, luminosit&agrave; di giorno e di notte e le velocit&agrave;, poi premi <b>Salva</b>.</p>
     <p class="mut">Il fuso orario e l'ora legale seguono la citt&agrave; scelta. L'ora si sincronizza da internet (NTP).</p>
   </div>
 
-  <p class="mut">Meteo: <a style="color:var(--acc)" href="https://open-meteo.com/">Open-Meteo.com</a> &middot; Animazione Tetris: libreria TetrisAnimation di Tobias Blum / Brian Lough.</p>
+  <p class="mut">Meteo: <a style="color:var(--acc)" href="https://open-meteo.com/">Open-Meteo.com</a> &middot; Ispirato al progetto WifiTetrisClock di Brian Lough (ESP32-Trinity).</p>
 </main>
+<script>
+  // Aperta come file la pagina non puo' usare la porta seriale: avvisa invece di fallire in silenzio
+  if (location.protocol === "file:") {
+    document.getElementById("fileWarn").style.display = "block";
+    document.getElementById("installCard").style.opacity = ".45";
+  }
+</script>
 </body>
 </html>
