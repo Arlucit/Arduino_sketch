@@ -18,6 +18,10 @@ Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con m
 
 ## Come appare
 
+![Demo del pannello](docs/demo-pannello.gif)
+
+**[▶ Video dimostrativo completo (pannello + interfaccia web)](docs/demo.mp4)** — simulazione fedele del disegno del firmware, non una ripresa del pannello reale.
+
 Le immagini sono ricostruzioni fedeli del disegno del firmware (stesso font, stesse posizioni e colori); sul pannello reale i colori dipendono dal modello. Nella pagina web i dati sono di esempio.
 
 | Ora | Meteo (città principale) |
