@@ -5,6 +5,7 @@ Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con m
 - **Ora grande**: cifre alte 28 pixel e larghe 12, a tratto spesso (griglia 3×7 di blocchi da 4 px), fatte di tetramini veri, ognuno di un colore vivo diverso (rosso, arancio, giallo, verde, ciano, blu, viola) con rilievo marcato. I pezzi cadono uno alla volta, ruotano e si spostano di lato durante la caduta e si impilano a formare la cifra. Quando una cifra cambia, i vecchi pezzi cadono fuori dal pannello.
 - **Scorrimento**: il passaggio tra le pagine scorre da destra a sinistra; la velocità si regola dal web (da circa 1,6 s a 0,2 s).
 - **Meteo piccolo**: nome della città e del paese in alto (scorre se è lungo), icona animata (sole che ruota, luna e stelle, nuvole, pioggia, neve, temporale, nebbia), termometro e goccia colorati con temperatura e umidità in carattere piccolo.
+- **Previsioni a 3 giorni**: per ogni città che scegli (interruttore «3 giorni: sì/no» nella pagina web) una schermata con oggi, domani e dopodomani: sigla del giorno, icona, umidità con %, temperatura massima/minima, nome della città e **ora locale** della città. Non sostituisce il meteo di oggi, che resta sempre
 - **Velocità regolabile** dalla pagina web (1–10), con il pulsante «Salva e rigioca l'animazione» per vedere subito l'effetto.
 - **Più città**: la prima mostra ora grande + meteo; dalla seconda in poi ogni città ha una sola schermata con meteo e ora locale (max 6, aggiungi/rimuovi/rendi principale dal web)
 - **Messaggi scorrevoli**: pagine di testo (colore, dimensione piccola/grande), max 6, gestite dal web
@@ -14,6 +15,8 @@ Orologio a blocchi Tetris per **ESP32 WROOM** e pannello **HUB75 64×32**, con m
 - **Cambio rete WiFi dalla pagina web**: «Cerca reti», scegli la rete (o inserisci una nascosta), password, «Collega». Se la nuova rete non risponde entro 15 secondi il display rimette quella precedente
 - Ora via NTP, fuso e ora legale seguiti dalla città scelta
 - **5 lingue** (italiano, English, español, français, Deutsch): si sceglie dal menu nel portale WiFi al primo avvio e si cambia in qualsiasi momento dalla pagina web. Cambiano i testi della pagina web, le condizioni meteo e i nomi delle città (arrivano nella lingua scelta)
+- **Riavvio dalla pagina web** (senza perdere il WiFi) e **hotspot di emergenza** `TetrisClock` (password `tetrisclock`, indirizzo `192.168.4.1`) attivabile dalla pagina; si accende da solo se il WiFi di casa manca per più di un minuto
+- Pagina web compressa e server HTTP a più connessioni, per risposte rapide; in alto mostra il tempo di risposta e la memoria libera
 - Installazione da browser con un clic (ESP Web Tools)
 
 ## Come appare
@@ -40,14 +43,17 @@ Le immagini sono ricostruzioni fedeli del disegno del firmware (stesso font, ste
 
 1. **Ora** grande (blocchi che cadono)
 2. **Meteo** della prima città
-3. **Altre città**, una pagina ciascuna con meteo e ora locale
-4. **Messaggi** scorrevoli, uno per pagina
+3. **Previsioni a 3 giorni** della prima città (se attive)
+4. **Altre città**, una pagina ciascuna con meteo e ora locale, seguita dalle sue previsioni (se attive)
+5. **Messaggi** scorrevoli, uno per pagina
 
-### Interfaccia web (`http://tetrisclock.local`)
+![Previsioni a 3 giorni](docs/pannello-previsioni.png)
+
+### Interfaccia web (`http://tetrisclock.local`, oppure `http://192.168.4.1` dall'hotspot)
 
 ![Interfaccia web](docs/interfaccia-web.png)
 
-Dalla pagina si gestiscono: città (aggiungi, rimuovi, rendi principale), messaggi (testo, colore, dimensione), unità e formato ora, luminosità di giorno e di notte a orari, velocità di caduta, di scorrimento tra le pagine e dei messaggi, durata delle pagine e rete WiFi.
+Dalla pagina si gestiscono: città (aggiungi, rimuovi, rendi principale, previsioni a 3 giorni sì/no per ciascuna), messaggi (testo, colore, dimensione), unità e formato ora, luminosità di giorno e di notte a orari, velocità di caduta, di scorrimento tra le pagine e dei messaggi, durata delle pagine, rete WiFi, hotspot di emergenza (acceso/spento) e riavvio della scheda.
 
 ## Piedinatura (ESP32-Trinity)
 
@@ -113,13 +119,19 @@ pio run -t upload
 1. Collegati alla rete WiFi `TetrisClock` (si apre il portale; altrimenti `192.168.4.1`), scegli la tua rete e la **lingua** dal menu «Lingua / Language».
 2. Il display fa scorrere l'indirizzo di configurazione. Apri `http://tetrisclock.local` (o l'IP) e imposta la città.
 
+## Se resta su «NTP Sync»
+
+La scheda ha bisogno di internet per l'ora (NTP) e per il meteo. Se il WiFi a cui è collegata non ha internet, o blocca il DNS, il display resta su «NTP Sync». Per vedere cosa succede apri il monitor seriale a 9600 baud: `[WiFi]` mostra IP, router e DNS; `[DNS] ... r=0` significa che i nomi non si risolvono (problema della rete, non della scheda). Collega la scheda a una rete con internet (pulsante «Reimposta WiFi» o hotspot).
+
 ## Cambiare rete WiFi
 
 Dalla pagina `http://tetrisclock.local`, scheda «Rete WiFi». Se la nuova rete è diversa da quella del telefono, la pagina smette di rispondere: collega il telefono alla nuova rete e riapri `http://tetrisclock.local` (o l'indirizzo che scorre sul display). La password viaggia in chiaro sulla rete locale, come il resto della pagina, che non ha login. «Reimposta WiFi» cancella la rete salvata e riapre il portale `TetrisClock`.
 
 ## Struttura del codice
 
-- `src/main.cpp`: display, meteo, WiFi, pagina web
+- `src/main.cpp`: display, meteo, WiFi, API della pagina web
+- `src/FastServer.h`: piccolo server HTTP su `esp_http_server` (più connessioni insieme, TCP_NODELAY)
+- `src/ui.html`: sorgente della pagina web; `src/WebUI.h` ne è la versione compressa (gzip) incorporata nel firmware. Dopo ogni modifica rigenera l'header: `python3 -c "import gzip;d=gzip.compress(open('src/ui.html','rb').read(),9,mtime=0);open('src/WebUI.h','w').write('#pragma once\n#include <stdint.h>\nstatic const uint8_t INDEX_GZ[] PROGMEM = {'+','.join(map(str,d))+'};\nstatic const unsigned INDEX_GZ_LEN = %d;\n'%len(d))"`
 - `src/TetrisEngine.h`: motore dei blocchi (nessuna dipendenza). Divide ogni cifra in pezzi, calcola in anticipo e verifica il percorso di ciascuno (rotazioni, spostamenti, caduta) e lo riproduce a tick
 - `src/TextUtil.h`: toglie gli accenti dai nomi di città (il font del pannello è solo ASCII)
 - `tools/engine_test.cpp`: test del motore sul computer, senza scheda:
