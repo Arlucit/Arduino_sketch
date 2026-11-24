@@ -1,0 +1,2 @@
+piste 238, via 128 (cucitura 95)
+OK: nessun corto, nessun aperto, distanza minima >= 0.20 mm
