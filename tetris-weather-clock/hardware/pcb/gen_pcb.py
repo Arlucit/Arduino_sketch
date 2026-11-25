@@ -13,7 +13,7 @@ from scipy import ndimage
 OUT = sys.argv[1] if len(sys.argv) > 1 else "out"
 os.makedirs(OUT, exist_ok=True)
 
-W, H = 101.6, 57.15          # dimensioni scheda (mm)
+W, H = 76.2, 57.15          # dimensioni scheda (mm)
 G = 0.254                    # griglia del router
 CLR = 0.2                    # distanza minima rame-rame
 TW = 0.25                    # larghezza piste segnale
@@ -37,9 +37,9 @@ Lp = ['3V3', 'EN', 'VP', 'VN', 'IO34', 'IO35', 'IO32', 'IO33', 'IO25', 'IO26', '
       'IO13', 'SD2', 'SD3', 'CMD', '5V']
 Rp = ['GND', 'IO23', 'IO22', 'TX', 'RX', 'IO21', 'GND', 'IO19', 'IO18', 'IO5', 'IO17', 'IO16', 'IO4', 'IO0',
       'IO2', 'IO15', 'SD1', 'SD0', 'CLK']
-espnet = {'3V3': '3V3', 'GND': GND, '5V': 'ESP_5V', 'IO25': 'R1_E', 'IO26': 'G1_E', 'IO27': 'B1_E', 'IO14': 'R2_E',
-          'IO12': 'G2_E', 'IO13': 'B2_E', 'IO35': 'LDR', 'IO23': 'A_E', 'IO19': 'B_E', 'IO5': 'C_E', 'IO17': 'D_E',
-          'IO18': 'E_E', 'IO16': 'CLK_E', 'IO4': 'LAT_E', 'IO15': 'OE_E'}
+espnet = {'GND': GND, '5V': '+5V', 'IO25': 'R1_H', 'IO26': 'G1_H', 'IO27': 'B1_H', 'IO14': 'R2_H',
+          'IO12': 'G2_H', 'IO13': 'B2_H', 'IO23': 'A_H', 'IO19': 'B_H', 'IO5': 'C_H', 'IO17': 'D_H',
+          'IO18': 'E_H', 'IO16': 'CLK_H', 'IO4': 'LAT_H', 'IO15': 'OE_H'}
 XL, XR = 15.24, 40.64
 add("J1", "ESP32 DevKit sx", "Socket_1x19_P2.54",
     [(i + 1, XL, 5.08 + 2.54 * i, PD, DR, espnet.get(n)) for i, n in enumerate(Lp)], "femmina 1x19, lato sx")
@@ -47,59 +47,17 @@ add("J6", "ESP32 DevKit dx", "Socket_1x19_P2.54",
     [(i + 1, XR, 5.08 + 2.54 * i, PD, DR, espnet.get(n)) for i, n in enumerate(Rp)], "femmina 1x19, lato dx")
 
 
-def dip20(ref, y0, chans):
-    pads = []
-    for p in range(1, 21):
-        if p <= 10:
-            x, y = 55.88, y0 + 2.54 * (p - 1)
-        else:
-            x, y = 63.5, y0 + 2.54 * (20 - p)
-        net = None
-        if p in (1, 20):
-            net = 'ESP_5V'
-        elif p in (10, 19):
-            net = GND
-        elif 2 <= p <= 9:
-            s = chans[p - 2]
-            net = f"{s}_E" if s else GND
-        else:
-            s = chans[19 - p - 0] if False else chans[18 - p]
-            net = f"{s}_H" if s else None
-        pads.append((p, x, y, PD, DR, net))
-    return pads
-
-
-add("U1", "74HCT245", "DIP-20_W7.62", dip20("U1", 2.54, ['R1', 'G1', 'B1', 'R2', 'G2', 'B2', 'E', 'A']),
-    "buffer 3.3V->5V")
-add("U2", "74HCT245", "DIP-20_W7.62", dip20("U2", 29.21, ['B', 'C', 'D', 'CLK', 'LAT', 'OE', None, None]),
-    "buffer 3.3V->5V")
 hub = ['R1', 'G1', 'B1', GND, 'R2', 'G2', 'B2', 'E', 'A', 'B', 'C', 'D', 'CLK', 'LAT', 'OE', GND]
 hp = []
 for n in range(1, 17):
-    x = 83.82 if n % 2 else 86.36
+    x = 50.8 if n % 2 else 53.34
     y = 7.62 + 2.54 * ((n - 1) // 2)
     hp.append((n, x, y, PD, DR, GND if hub[n - 1] == GND else f"{hub[n - 1]}_H"))
 add("J_HUB", "HUB75 2x8", "IDC-Header_2x08_P2.54_Vertical", hp, "header box 2x8 per il flat del pannello")
-add("C2", "100nF", "C_Disc_P5.08", [(1, 66.04, 2.54, PD, DR, 'ESP_5V'), (2, 71.12, 2.54, PD, DR, GND)])
-add("C3", "100nF", "C_Disc_P5.08", [(1, 50.8, 29.21, PD, DR, 'ESP_5V'), (2, 50.8, 26.67, PD, DR, GND)])
-add("C1", "1000uF 16V", "CP_Radial_D10_P5.08",
-    [(1, 73.66, 38.1, 2.0, 1.1, '+5V'), (2, 78.74, 38.1, 2.0, 1.1, GND)], "elettrolitico, + verso F1")
-add("F1", "PTC 3A", "Fuse_PTC_P5.08", [(1, 71.12, 46.99, 2.0, 1.1, 'VBUS'), (2, 76.2, 46.99, 2.0, 1.1, '+5V')],
-    "polyfuse 3A (hold)")
-add("J2", "USB-C breakout (VBUS,GND)", "PinHeader_1x02_P2.54",
-    [(1, 71.12, 52.07, PD, DR, 'VBUS'), (2, 73.66, 52.07, PD, DR, GND)],
-    "modulo USB-C con resistenze CC 5.1k")
-add("D1", "1N5819", "D_DO-41_P10.16", [(1, 78.74, 54.61, 2.0, 1.1, '+5V'), (2, 68.58, 54.61, 2.0, 1.1, 'ESP_5V')],
-    "Schottky: alimenta l'ESP senza ritorno sul pannello")
-add("J3", "Alim. pannello 1", "TerminalBlock_5.08_1x2", [(1, 86.36, 50.8, 2.6, 1.4, '+5V'), (2, 91.44, 50.8, 2.6, 1.4, GND)],
-    "morsetto 5.08 -> cavo alimentazione pannello")
-add("J4", "Alim. pannello 2", "TerminalBlock_5.08_1x2", [(1, 86.36, 40.64, 2.6, 1.4, '+5V'), (2, 91.44, 40.64, 2.6, 1.4, GND)],
-    "secondo morsetto (cavo ad Y del pannello)")
-add("J5", "LDR", "PinHeader_1x02_P2.54", [(1, 7.62, 15.24, PD, DR, '3V3'), (2, 7.62, 17.78, PD, DR, 'LDR')],
-    "fotoresistenza tra 3V3 e IO35")
-add("R4", "10k", "R_Axial_P10.16", [(1, 7.62, 22.86, PD, DR, 'LDR'), (2, 7.62, 33.02, PD, DR, GND)])
-add("R3", "10k", "R_Axial_P10.16", [(1, 48.26, 38.1, PD, DR, '3V3'), (2, 48.26, 48.26, PD, DR, 'OE_E')],
-    "pull-up OE: pannello spento durante il reset")
+add("J3", "Ingresso 5V", "TerminalBlock_5.08_1x2", [(1, 63.5, 50.8, 2.6, 1.4, '+5V'), (2, 68.58, 50.8, 2.6, 1.4, GND)],
+    "morsetto: 5V dall'alimentatore, alimenta ESP e pannello")
+add("J4", "Alim. pannello", "TerminalBlock_5.08_1x2", [(1, 63.5, 40.64, 2.6, 1.4, '+5V'), (2, 68.58, 40.64, 2.6, 1.4, GND)],
+    "morsetto: cavo di alimentazione del pannello")
 for k, (hx, hy) in enumerate([(4, 4), (W - 4, 4), (4, H - 4), (W - 4, H - 4)]):
     holes.append((hx, hy, 3.2))
 
@@ -131,26 +89,17 @@ srect(13.5, 2.0, 42.4, 53.6)                     # ingombro DevKit
 stext(18.5, 27.5, "ESP32", 2.2)
 stext(18.5, 31.0, "DevKit", 2.2)
 stext(21.0, 51.5, "USB", 1.6)
-srect(54.0, 1.2, 65.2, 27.0); stext(56.5, 0.9, "U1", 1.4)
-srect(54.0, 27.9, 65.2, 53.8); stext(56.5, 56.6, "U2", 1.4)
-srect(81.7, 5.2, 88.5, 27.8); stext(82.0, 4.9, "HUB75", 1.4)
-stext(82.0, 31.0, "1", 1.4)
-scirc(76.2, 38.1, 5.0); stext(72.0, 33.0, "C1", 1.4)
-srect(69.5, 44.8, 77.8, 49.2); stext(70.5, 43.9, "F1", 1.3)
-srect(69.8, 50.8, 75.0, 53.4); stext(69.8, 56.0, "J2 USB-C 5V", 1.2)
-srect(66.8, 53.5, 80.6, 55.7); stext(70.0, 57.0, "D1", 1.2)
-srect(83.8, 46.7, 93.9, 54.8); stext(84.0, 46.3, "J3 5V GND", 1.3)
-srect(83.8, 36.5, 93.9, 44.6); stext(84.0, 36.1, "J4 5V GND", 1.3)
-stext(2.2, 13.2, "LDR 3V3/IO35", 1.2)
-srect(6.3, 21.8, 8.9, 34.1)
+srect(48.7, 5.2, 55.5, 27.8); stext(48.7, 4.9, "HUB75", 1.4)
+srect(60.8, 46.7, 70.9, 54.8); stext(61.0, 46.3, "5V IN", 1.3)
+srect(60.8, 36.5, 70.9, 44.6); stext(61.0, 36.1, "5V PANNELLO", 1.1)
 # pin 1 degli header e dei chip
-for (x, y) in [(XL, 5.08), (XR, 5.08), (55.88, 2.54), (55.88, 29.21), (83.82, 7.62)]:
+for (x, y) in [(XL, 5.08), (XR, 5.08), (50.8, 7.62)]:
     scirc(x - 1.5, y - 1.5, 0.4, 12)
 for (x, y) in [(XL - 2.0, 5.08 + 2.54 * 18), (XR - 2.0, 5.08 + 2.54 * 18)]:
     pass
 stext(11.0, 53.0, "5V", 1.1)
-stext(5.0, 44.0, "TetrisClock", 1.7)
-stext(5.0, 47.0, "HUB75 v1", 1.7)
+stext(2.5, 44.0, "TetrisClock", 1.5)
+stext(2.5, 47.0, "HUB75 v1", 1.5)
 
 # ------------------------------------------------------------------ rete / elementi di rame
 allpads = []
@@ -325,7 +274,7 @@ def hpwl(net):
 
 
 routable = [n for n in nets if n != GND and len(nets[n]) > 1]
-first = [n for n in ['+5V', 'VBUS', 'ESP_5V', '3V3'] if n in routable]
+first = [n for n in ['+5V'] if n in routable]
 sig = sorted([n for n in routable if n not in first], key=lambda n: -hpwl(n))
 
 t0 = time.time()

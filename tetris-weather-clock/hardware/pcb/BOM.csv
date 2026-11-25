@@ -1,17 +1,6 @@
 Rif,Valore,Footprint,Q.ta,Note
 J1,ESP32 DevKit sx,Socket_1x19_P2.54,1,"femmina 1x19, lato sx"
 J6,ESP32 DevKit dx,Socket_1x19_P2.54,1,"femmina 1x19, lato dx"
-U1,74HCT245,DIP-20_W7.62,1,buffer 3.3V->5V
-U2,74HCT245,DIP-20_W7.62,1,buffer 3.3V->5V
 J_HUB,HUB75 2x8,IDC-Header_2x08_P2.54_Vertical,1,header box 2x8 per il flat del pannello
-C2,100nF,C_Disc_P5.08,1,
-C3,100nF,C_Disc_P5.08,1,
-C1,1000uF 16V,CP_Radial_D10_P5.08,1,"elettrolitico, + verso F1"
-F1,PTC 3A,Fuse_PTC_P5.08,1,polyfuse 3A (hold)
-J2,"USB-C breakout (VBUS,GND)",PinHeader_1x02_P2.54,1,modulo USB-C con resistenze CC 5.1k
-D1,1N5819,D_DO-41_P10.16,1,Schottky: alimenta l'ESP senza ritorno sul pannello
-J3,Alim. pannello 1,TerminalBlock_5.08_1x2,1,morsetto 5.08 -> cavo alimentazione pannello
-J4,Alim. pannello 2,TerminalBlock_5.08_1x2,1,secondo morsetto (cavo ad Y del pannello)
-J5,LDR,PinHeader_1x02_P2.54,1,fotoresistenza tra 3V3 e IO35
-R4,10k,R_Axial_P10.16,1,
-R3,10k,R_Axial_P10.16,1,pull-up OE: pannello spento durante il reset
+J3,Ingresso 5V,TerminalBlock_5.08_1x2,1,"morsetto: 5V dall'alimentatore, alimenta ESP e pannello"
+J4,Alim. pannello,TerminalBlock_5.08_1x2,1,morsetto: cavo di alimentazione del pannello
